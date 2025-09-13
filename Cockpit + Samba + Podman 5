@@ -1,7 +1,7 @@
 #!/bin/bash
 # =====================================================
 # LXC-Erstellung: Cockpit + Samba + Podman 5 + Testcontainer
-# Debian 12, Privileged, Nesting, statische IP
+# Debian 12, Privileged, nesting, fuse, keyctl, statische IP
 # Host-ZFS als Bind-Mount
 # =====================================================
 set -e
@@ -74,8 +74,9 @@ pct exec $CTID -- bash -c "echo 'root:$ROOT_PASS' | chpasswd"
 # ------------------------
 # Grundsystem vorbereiten
 # ------------------------
-pct exec $CTID -- apt update
-pct exec $CTID -- apt upgrade -y
+pct exec $CTID -- apt clean
+pct exec $CTID -- rm -rf /var/lib/apt/lists/*
+pct exec $CTID -- bash -c "apt update -y && apt upgrade -y"
 pct exec $CTID -- apt install -y wget curl gnupg2 lsb-release sudo
 
 # ------------------------
@@ -83,14 +84,15 @@ pct exec $CTID -- apt install -y wget curl gnupg2 lsb-release sudo
 # ------------------------
 pct exec $CTID -- bash -c "echo 'deb http://download.opensuse.org/repositories/home:/alvistack/Debian_12/ /' | tee /etc/apt/sources.list.d/home:alvistack.list"
 pct exec $CTID -- bash -c "curl -fsSL https://download.opensuse.org/repositories/home:alvistack/Debian_12/Release.key | gpg --dearmor | tee /etc/apt/trusted.gpg.d/home_alvistack.gpg > /dev/null"
-pct exec $CTID -- apt update
-pct exec $CTID -- apt upgrade -y
+pct exec $CTID -- apt clean
+pct exec $CTID -- rm -rf /var/lib/apt/lists/*
+pct exec $CTID -- bash -c "apt update -y && apt upgrade -y"
 
 
 # ------------------------
 # Podman 5 installieren
 # ------------------------
-pct exec $CTID -- rm -rf $ZPOOL_MOUNT/podman
+pct exec $CTID -- bash -c "rm -rf $ZPOOL_MOUNT/podman/*"
 pct exec $CTID -- apt install -y podman fuse-overlayfs netavark aardvark-dns
 pct exec $CTID -- bash -c "mkdir -p $ZPOOL_MOUNT/podman"
 pct exec $CTID -- bash -c "cat > /etc/containers/storage.conf <<EOF
@@ -102,6 +104,10 @@ graphroot = \"$ZPOOL_MOUNT/podman\"
 [storage.options.overlay]
 mount_program = \"/usr/bin/fuse-overlayfs\"
 EOF"
+
+pct exec $CTID -- rm /etc/apt/sources.list.d/home:alvistack.list
+pct exec $CTID -- rm /etc/apt/trusted.gpg.d/home_alvistack.gpg
+pct exec $CTID -- bash -c "apt update -y && apt upgrade -y"
 
 
 # ------------------------
