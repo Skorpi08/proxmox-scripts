@@ -1,0 +1,159 @@
+#!/bin/bash
+# =====================================================
+# LXC-Erstellung: Cockpit + Samba + Podman 5 + Testcontainer
+# Debian 12, Privileged, Nesting, statische IP
+# Host-ZFS als Bind-Mount
+# =====================================================
+set -e
+
+# ------------------------
+# Variablen
+# ------------------------
+HOSTNAME=cockpit
+TEMPLATE="/bpool/template/cache/debian-12-standard_12.12-1_amd64.tar.zst"
+STORAGE="local-zfs"
+DISK_SIZE="16"
+MEMORY=4096
+CORES=2
+ZPOOL_PATH="/mnt/hdd"
+ZPOOL_MOUNT="/mnt/hdd"
+GATEWAY="192.168.178.1"
+NETMASK="24"
+ROOT_PASS="11111"
+ADMIN_USER="admin"
+ADMIN_PASS="11111"
+SAMBA_USER="user1"
+SAMBA_PASS="11111"
+
+# ------------------------
+# Nächste freie CTID ermitteln (150-200)
+# ------------------------
+for i in $(seq 150 200); do
+  if ! pvesh get /cluster/resources --type vm | grep -qE "(qemu|lxc)/$i"; then
+    CTID=$i
+    break
+  fi
+done
+
+if [ -z "$CTID" ]; then
+  echo "Fehler: Keine freie CTID gefunden!"
+  exit 1
+fi
+
+IP="192.168.178.$CTID"
+echo "==> Nächste freie CTID: $CTID"
+echo "==> Statische IP: $IP"
+
+# ------------------------
+# LXC erstellen
+# ------------------------
+pct create $CTID $TEMPLATE \
+  --hostname $HOSTNAME \
+  --cores $CORES \
+  --memory $MEMORY \
+  --swap 0 \
+  --rootfs $STORAGE:$DISK_SIZE \
+  --net0 name=eth0,bridge=vmbr0,ip=$IP/$NETMASK,gw=$GATEWAY,type=veth \
+  --unprivileged 0 \
+  --features nesting=1,fuse=1,keyctl=1
+
+
+# ZFS-Pool als Mount einhängen
+pct set $CTID -mp0 $ZPOOL_PATH,mp=$ZPOOL_MOUNT,backup=0
+
+# ------------------------
+# Container starten
+# ------------------------
+pct start $CTID
+
+# ------------------------
+# Root-Passwort setzen
+# ------------------------
+pct exec $CTID -- bash -c "echo 'root:$ROOT_PASS' | chpasswd"
+
+# ------------------------
+# Grundsystem vorbereiten
+# ------------------------
+pct exec $CTID -- apt update
+pct exec $CTID -- apt upgrade -y
+pct exec $CTID -- apt install -y wget curl gnupg2 lsb-release sudo
+
+# ------------------------
+# Podman 5 Repository hinzufügen
+# ------------------------
+pct exec $CTID -- bash -c "echo 'deb http://download.opensuse.org/repositories/home:/alvistack/Debian_12/ /' | tee /etc/apt/sources.list.d/home:alvistack.list"
+pct exec $CTID -- bash -c "curl -fsSL https://download.opensuse.org/repositories/home:alvistack/Debian_12/Release.key | gpg --dearmor | tee /etc/apt/trusted.gpg.d/home_alvistack.gpg > /dev/null"
+pct exec $CTID -- apt update
+pct exec $CTID -- apt upgrade -y
+
+
+# ------------------------
+# Podman 5 installieren
+# ------------------------
+pct exec $CTID -- rm -rf $ZPOOL_MOUNT/podman
+pct exec $CTID -- apt install -y podman fuse-overlayfs netavark aardvark-dns
+pct exec $CTID -- bash -c "mkdir -p $ZPOOL_MOUNT/podman"
+pct exec $CTID -- bash -c "cat > /etc/containers/storage.conf <<EOF
+[storage]
+driver = \"overlay\"
+runroot = \"/var/run/containers/storage\"
+graphroot = \"$ZPOOL_MOUNT/podman\"
+
+[storage.options.overlay]
+mount_program = \"/usr/bin/fuse-overlayfs\"
+EOF"
+
+
+# ------------------------
+# Testcontainer erstellen (Hello World)
+# ------------------------
+pct exec $CTID -- podman pull docker.io/library/alpine:latest
+pct exec $CTID -- podman run --rm alpine echo "Podman 5 läuft auf ZFS!"
+
+# ------------------------
+# Cockpit installieren
+# ------------------------
+pct exec $CTID -- apt install -y cockpit cockpit-packagekit cockpit-networkmanager cockpit-storaged
+pct exec $CTID -- systemctl enable --now cockpit.socket
+
+# ------------------------
+# Admin-User mit sudo anlegen
+# ------------------------
+pct exec $CTID -- bash -c "adduser --gecos '' --disabled-password $ADMIN_USER"
+pct exec $CTID -- bash -c "echo '$ADMIN_USER:$ADMIN_PASS' | chpasswd"
+pct exec $CTID -- usermod -aG sudo $ADMIN_USER
+
+# ------------------------
+# Samba installieren + konfigurieren
+# ------------------------
+pct exec $CTID -- apt install -y samba
+pct exec $CTID -- bash -c "adduser --disabled-password --gecos '' $SAMBA_USER"
+pct exec $CTID -- bash -c "echo -e '$SAMBA_PASS\n$SAMBA_PASS' | smbpasswd -a -s $SAMBA_USER"
+pct exec $CTID -- bash -c "echo '
+[ZPool]
+   path = $ZPOOL_MOUNT
+   browseable = yes
+   writable = yes
+   guest ok = no
+   create mask = 0660
+   directory mask = 0770
+   valid users = $SAMBA_USER
+' >> /etc/samba/smb.conf"
+pct exec $CTID -- systemctl enable --now smbd
+
+# ------------------------
+# Cockpit Socket prüfen
+# ------------------------
+pct exec $CTID -- systemctl status cockpit.socket | head -n 10
+
+# ------------------------
+# Fertig
+# ------------------------
+echo "-----------------------------------------------------"
+echo "Container $CTID erstellt und gestartet mit IP: $IP"
+echo "Root-Passwort: $ROOT_PASS"
+echo "Admin-User für Cockpit: $ADMIN_USER | Passwort: $ADMIN_PASS"
+echo "Samba-User: $SAMBA_USER | Passwort: $SAMBA_PASS"
+echo "Cockpit: https://$IP:9090"
+echo "Samba-Share: \\\\$IP\\ZPool"
+echo "-----------------------------------------------------"
