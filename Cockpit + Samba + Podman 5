@@ -119,7 +119,9 @@ pct exec $CTID -- podman run --rm alpine echo "Podman 5 läuft auf ZFS!"
 # ------------------------
 # Cockpit installieren
 # ------------------------
-pct exec $CTID -- apt install -y cockpit cockpit-packagekit cockpit-networkmanager cockpit-storaged
+pct exec $CTID -- curl -sSL https://repo.45drives.com/setup | bash
+pct exec $CTID -- apt install -y houston
+#cockpit cockpit-packagekit cockpit-networkmanager cockpit-storaged cockpit-podman cockpit-navigator cockpit-identities cockpit-file-sharing
 pct exec $CTID -- systemctl enable --now cockpit.socket
 
 # ------------------------
@@ -132,7 +134,7 @@ pct exec $CTID -- usermod -aG sudo $ADMIN_USER
 # ------------------------
 # Samba installieren + konfigurieren
 # ------------------------
-pct exec $CTID -- apt install -y samba
+#pct exec $CTID -- apt install -y samba
 pct exec $CTID -- bash -c "adduser --disabled-password --gecos '' $SAMBA_USER"
 pct exec $CTID -- bash -c "echo -e '$SAMBA_PASS\n$SAMBA_PASS' | smbpasswd -a -s $SAMBA_USER"
 pct exec $CTID -- bash -c "echo '
