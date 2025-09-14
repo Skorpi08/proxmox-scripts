@@ -120,13 +120,15 @@ pct exec $CTID -- podman run --rm alpine echo "Podman 5 läuft auf ZFS!"
 # ------------------------
 # Cockpit installieren
 # ------------------------
-wget -qO- https://repo.45drives.com/key/gpg.asc | gpg --dearmor | tee /usr/share/keyrings/45drives-archive-keyring.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/45drives-archive-keyring.gpg] https://repo.45drives.com/enterprise/debian bookworm main" > /etc/apt/sources.list.d/45drives-enterprise.list
-apt update
+
+pct exec $CTID -- bash -c "wget -qO- https://repo.45drives.com/key/gpg.asc | gpg --dearmor | tee /usr/share/keyrings/45drives-archive-keyring.gpg >/dev/null"
+pct exec $CTID -- bash -c "echo 'deb [signed-by=/usr/share/keyrings/45drives-archive-keyring.gpg] https://repo.45drives.com/enterprise/debian bookworm main' > /etc/apt/sources.list.d/45drives-enterprise.list"
+pct exec $CTID -- apt update -y
+
 
 pct exec $CTID -- apt install -y cockpit
-#pct exec $CTID -- apt install -y cockpit-packagekit cockpit-networkmanager cockpit-storaged cockpit-podman
-#pct exec $CTID -- apt install -y cockpit-navigator cockpit-identities cockpit-file-sharing
+pct exec $CTID -- apt install -y cockpit-packagekit cockpit-networkmanager cockpit-storaged cockpit-podman
+pct exec $CTID -- apt install -y cockpit-navigator cockpit-identities cockpit-file-sharing
 pct exec $CTID -- systemctl enable --now cockpit.socket
 
 # ------------------------
