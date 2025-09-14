@@ -1,35 +1,34 @@
 #!/bin/bash
 # =====================================================
 # LXC-Erstellung: OMV-ready Container auf Proxmox 9
-# Debian 13, Privileged, Nesting, statische IP
-# Host-HDD + ZFS als Bind-Mount
-# Root + OMV-Admin-Passwort automatisch gesetzt
+# Debian 12, Privileged, Nesting, statische IP
+# Host-HDD ZFS als Bind-Mount
+# Root automatisch gesetzt
+# OMV-Admin-Passwort vergeben
 # =====================================================
+set -e
 
 # ------------------------
 # Variablen anpassen
 # ------------------------
 HOSTNAME=omv
-TEMPLATE="/var/lib/vz/template/cache/debian-12-standard_12.12-1_amd64.tar.zst"
+TEMPLATE="/bpool/template/cache/debian-12-standard_12.12-1_amd64.tar.zst"
 #TEMPLATE="/var/lib/vz/template/cache/debian-13-standard_13.1-1_amd64.tar.zst"
-STORAGE="local"          # dir-Storage
-DISK_SIZE="16"            # nur Zahl
-MEMORY=4096
+STORAGE="local-zfs"          # dir-Storage
+DISK_SIZE="16"
+MEMORY=4096 #8192 #16384 #24576
 CORES=2
-HDD_PATH="/mnt/hdd"        # optional Host-HDD
-HDD_MOUNT="/mnt/hdd"  # Mountpoint im Container
-ZFS_POOL="/tank"           # existierender ZFS-Pool auf Host
-ZFS_MOUNT="/srv/zfs"       # Mountpoint im Container
+ZPOOL_PATH="/mnt/hdd"           # optional Host-HDD
+ZPOOL_MOUNT="/mnt/hdd" 		# Mountpoint im Container
 GATEWAY="192.168.178.1"
 NETMASK="24"
-
 ROOT_PASS="11111"        # Root-Passwort im Container
-OMV_ADMIN_PASS=$ROOT_PASS   # Admin-Passwort für OMV-WebGUI
+
 
 # ------------------------
-# Nächste freie CTID ermitteln (zwischen 101 und 1000, egal ob VM oder CT)
+# Nächste freie CTID ermitteln (150-200)
 # ------------------------
-for i in $(seq 101 1000); do
+for i in $(seq 150 200); do
   if ! pvesh get /cluster/resources --type vm | grep -qE "(qemu|lxc)/$i"; then
     CTID=$i
     break
@@ -42,10 +41,8 @@ if [ -z "$CTID" ]; then
 fi
 
 IP="192.168.178.$CTID"
-
 echo "==> Nächste freie CTID: $CTID"
 echo "==> Statische IP: $IP"
-
 
 
 # ------------------------
@@ -59,12 +56,11 @@ pct create $CTID $TEMPLATE \
   --rootfs $STORAGE:$DISK_SIZE \
   --net0 name=eth0,bridge=vmbr0,ip=$IP/$NETMASK,gw=$GATEWAY,type=veth \
   --unprivileged 0 \
-  --features nesting=1 \
-  #--mp0 $HDD_PATH,mp=$HDD_MOUNT,backup=0 \
-  #--mp1 $ZFS_POOL,mp=$ZFS_MOUNT,backup=0 \
+  --features nesting=1,fuse=1,keyctl=1
   #--apparmor=unconfined
 
-#pct set $CTID -mp1 /dev/zfs,mp=/dev/zfs
+# ZFS-Pool als Mount einhängen
+pct set $CTID -mp0 $ZPOOL_PATH,mp=$ZPOOL_MOUNT,backup=0
 
 # ------------------------
 # Container starten
@@ -79,15 +75,14 @@ pct exec $CTID -- bash -c "echo 'root:$ROOT_PASS' | chpasswd"
 # ------------------------
 # Grundsystem vorbereiten
 # ------------------------
-pct exec $CTID -- apt update
-pct exec $CTID -- apt upgrade -y
-pct exec $CTID -- apt install -y wget curl gnupg lsb-release
+pct exec $CTID -- bash -c "apt update -y && apt upgrade -y"
+pct exec $CTID -- apt install -y wget curl gnupg lsb-release sudo
 
 # ------------------------
-# OMV installieren und Admin-Passwort setzen
+# OMV installieren
 # ------------------------
 pct exec $CTID -- bash -c "wget -O - https://github.com/OpenMediaVault-Plugin-Developers/installScript/raw/master/install | bash"
-pct exec $CTID -- bash -c "omv-confdbadm passwd admin \"$OMV_ADMIN_PASS\" || omv-salt deploy run omv"
+
 
 # ------------------------
 # Fertig
@@ -95,7 +90,9 @@ pct exec $CTID -- bash -c "omv-confdbadm passwd admin \"$OMV_ADMIN_PASS\" || omv
 echo "-----------------------------------------------------"
 echo "Container $CTID erstellt und gestartet mit IP: $IP"
 echo "Root-Passwort im Container: $ROOT_PASS"
-echo "OMV-Admin-Passwort: $OMV_ADMIN_PASS"
+echo "OMV-Admin-Passwort: openmediavault"
 echo "Zugriff auf Container: pct enter $CTID"
 echo "OMV-WebGUI: http://$IP/"
 echo "-----------------------------------------------------"
+echo "Starte omv-firstaid für Admin-Passwort und weitere Einstellungen..."
+pct exec $CTID -- omv-firstaid
