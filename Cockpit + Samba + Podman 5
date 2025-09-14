@@ -13,8 +13,9 @@ HOSTNAME=cockpit
 TEMPLATE="/bpool/template/cache/debian-12-standard_12.12-1_amd64.tar.zst"
 STORAGE="local-zfs"
 DISK_SIZE="16"
-MEMORY=4096
+MEMORY=4096 #8192 #16384 #24576
 CORES=2
+SAMBA_MOUNT="hdd"
 ZPOOL_PATH="/mnt/hdd"
 ZPOOL_MOUNT="/mnt/hdd"
 GATEWAY="192.168.178.1"
@@ -142,7 +143,7 @@ pct exec $CTID -- apt install -y samba
 pct exec $CTID -- bash -c "adduser --disabled-password --gecos '' $SAMBA_USER"
 pct exec $CTID -- bash -c "echo -e '$SAMBA_PASS\n$SAMBA_PASS' | smbpasswd -a -s $SAMBA_USER"
 pct exec $CTID -- bash -c "echo '
-[ZPool]
+[$SAMBA_MOUNT]
    path = $ZPOOL_MOUNT
    browseable = yes
    writable = yes
@@ -167,5 +168,5 @@ echo "Root-Passwort: $ROOT_PASS"
 echo "Admin-User für Cockpit: $ADMIN_USER | Passwort: $ADMIN_PASS"
 echo "Samba-User: $SAMBA_USER | Passwort: $SAMBA_PASS"
 echo "Cockpit: https://$IP:9090"
-echo "Samba-Share: \\\\$IP\\ZPool"
+echo "Samba-Share: \\\\$IP\\$SAMBA_MOUNT"
 echo "-----------------------------------------------------"
