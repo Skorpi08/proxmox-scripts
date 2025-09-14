@@ -94,7 +94,7 @@ pct exec $CTID -- bash -c "apt update -y && apt upgrade -y"
 # Podman 5 installieren
 # ------------------------
 pct exec $CTID -- bash -c "rm -rf $ZPOOL_MOUNT/podman/*"
-pct exec $CTID -- apt install -y podman fuse-overlayfs netavark aardvark-dns
+pct exec $CTID -- apt install -y podman podman-compose fuse-overlayfs netavark aardvark-dns
 pct exec $CTID -- bash -c "mkdir -p $ZPOOL_MOUNT/podman"
 pct exec $CTID -- bash -c "cat > /etc/containers/storage.conf <<EOF
 [storage]
