@@ -10,13 +10,15 @@ services:
       - "81:81"       # Admin Web-UI
       - "443:443"     # HTTPS
     volumes:
-      - ./data:/data
-      - ./letsencrypt:/etc/letsencrypt
+      - /config/npmplus/data:/data
+      - /config/npmplus/letsencrypt:/etc/letsencrypt
       - /var/www:/var/www
       - shm-volume:/tmp/cache:rw   # tmpfs für Cache/Logs
+    dns:
+      - 127.0.0.1   # zuerst Technitium
     environment:
       - TZ=Europe/Berlin
-      - ACME_EMAIL=myemail@mail.com
+      - ACME_EMAIL=skorpik08@gmail.com
 
 volumes:
   shm-volume:
