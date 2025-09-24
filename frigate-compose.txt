@@ -1,0 +1,31 @@
+services:
+  frigate:
+    container_name: frigate
+    image: ghcr.io/blakeblackshear/frigate:stable
+    privileged: true
+    restart: always
+    shm_size: "1gb"   # für ffmpeg notwendig
+    #cap_add:
+     # - CAP_PERFMON
+    devices:
+      - /dev/dri/renderD129
+      - /dev/bus/usb/001/003
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./config:/config            # deine Frigate-Konfiguration
+      - /mnt/unraid/media:/media              # Aufnahmen / Clips
+      #- /tmp/cache:/tmp/cache       # Cache für ffmpeg
+      - type: tmpfs # Optional: 1GB of memory, reduces SSD/SD Card wear
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    ports:
+      - "8971:8971"
+      - "5000:5000"   # Web UI
+      - "8554:8554"   # RTSP
+      - "8555:8555/tcp"  # WebRTC über TCP
+      - "8555:8555/udp"  # WebRTC über UDP
+    environment:
+      - LIBVA_DRIVER_NAME=iHD
+      - XDG_RUNTIME_DIR=/tmp
+      - FRIGATE_RTSP_PASSWORD=meinPasswort
