@@ -1,0 +1,19 @@
+version: "3.9"
+services:
+  opencloud:
+    image: docker.io/opencloudeu/opencloud-rolling:latest
+    entrypoint:
+      - /bin/sh
+    command: ["-c", "opencloud init --insecure true || true; opencloud server"]
+    # --insecure true --force-overwrite
+    container_name: opencloud
+    restart: always
+    ports:
+      - "9200:9200"  # Host-Port : Container-Port
+    environment:
+      - IDM_ADMIN_PASSWORD=meinAdminPasswort
+      - IDM_CREATE_DEMO_USERS=false
+      - OC_URL=https://web.de
+    volumes:
+      - /config/opencloud:/etc/opencloud
+      - /config/opencloud/data:/var/lib/opencloud
