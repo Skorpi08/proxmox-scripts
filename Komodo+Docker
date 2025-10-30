@@ -1,0 +1,106 @@
+#!/bin/bash
+# =====================================================
+# LXC-Erstellung: Komodo + Docker
+# Debian 12, Unprivileged, nesting, fuse, keyctl, statische IP
+# =====================================================
+set -e
+
+# ------------------------
+# Variablen
+# ------------------------
+HOSTNAME=komodo-netzwerk
+TEMPLATE="/backup/template/cache/debian-12-standard_12.12-1_amd64.tar.zst"
+STORAGE="local-zfs"
+DISK_SIZE="16"
+MEMORY=4096
+CORES=2
+GATEWAY="192.168.178.1"
+NETMASK="24"
+ROOT_PASS="11111"
+CTID_START=150
+CTID_END=200
+ADMIN_USER="admin"
+ADMIN_PASS="admin"  # Ändere das Passwort nach Bedarf!
+
+# ------------------------
+# Nächste freie CTID ermitteln (150-200)
+# ------------------------
+for i in $(seq $CTID_START $CTID_END); do
+  if ! pvesh get /cluster/resources --type vm | grep -qE "(qemu|lxc)/$i"; then
+    CTID=$i
+    break
+  fi
+done
+
+if [ -z "$CTID" ]; then
+  echo "❌ Fehler: Keine freie CTID gefunden!"
+  exit 1
+fi
+
+IP="192.168.178.$CTID"
+echo "==> Nächste freie CTID: $CTID"
+echo "==> Statische IP: $IP"
+
+# ------------------------
+# LXC erstellen
+# ------------------------
+pct create $CTID $TEMPLATE \
+  --hostname $HOSTNAME \
+  --cores $CORES \
+  --memory $MEMORY \
+  --swap 0 \
+  --rootfs $STORAGE:$DISK_SIZE \
+  --net0 name=eth0,bridge=vmbr0,ip=$IP/$NETMASK,gw=$GATEWAY,type=veth \
+  --unprivileged 1 \
+  --features nesting=1,fuse=1,keyctl=1
+
+# ------------------------
+# LXC starten und Root-Passwort setzen
+# ------------------------
+pct start $CTID
+pct exec $CTID -- bash -c "echo 'root:$ROOT_PASS' | chpasswd"
+
+# ------------------------
+# Grundsystem vorbereiten
+# ------------------------
+pct exec $CTID -- apt update -y && apt upgrade -y
+pct exec $CTID -- apt install -y wget curl gnupg2 lsb-release sudo ca-certificates
+
+# ------------------------
+# Docker installieren
+# ------------------------
+pct exec $CTID -- bash -c "curl -fsSL https://get.docker.com -o get-docker.sh"
+pct exec $CTID -- bash -c "sh get-docker.sh"
+pct exec $CTID -- systemctl enable --now docker
+
+# ------------------------
+# Admin-Benutzer erstellen und zur Docker-Gruppe hinzufügen
+# ------------------------
+pct exec $CTID -- bash -c "useradd -m -s /bin/bash $ADMIN_USER"
+pct exec $CTID -- bash -c "echo '$ADMIN_USER:$ADMIN_PASS' | chpasswd"
+pct exec $CTID -- bash -c "usermod -aG docker $ADMIN_USER"
+pct exec $CTID -- bash -c "usermod -aG sudo $ADMIN_USER"  # Damit der Admin volle Rechte hat
+
+# ------------------------
+# Komodo installieren
+# Quelle: https://komo.do/docs/installation
+# ------------------------
+pct exec $CTID -- bash -c "docker volume create komodo_data"
+pct exec $CTID -- bash -c "docker run -d \
+  --name komodo \
+  -p 9123:9123 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v komodo_data:/data \
+  --restart unless-stopped \
+  ghcr.io/mbecker20/komodo:latest"
+
+# ------------------------
+# Abschlussinfo
+# ------------------------
+echo "-----------------------------------------------------"
+echo "✅ LXC $CTID erstellt und gestartet mit IP: $IP"
+echo "Admin-Benutzer erstellt: $ADMIN_USER"
+echo "Admin-Passwort: $ADMIN_PASS"
+echo "Komodo UI: http://$IP:9123"
+echo "Login: admin / admin (Standard, bitte ändern!)"
+echo "-----------------------------------------------------"
