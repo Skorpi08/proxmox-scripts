@@ -12,7 +12,7 @@ services:
       - /dev/bus/usb/001/003
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - ./config:/config            # deine Frigate-Konfiguration
+      - /config/frigate:/config            # deine Frigate-Konfiguration
       - /mnt/unraid/media:/media              # Aufnahmen / Clips
       #- /tmp/cache:/tmp/cache       # Cache für ffmpeg
       - type: tmpfs # Optional: 1GB of memory, reduces SSD/SD Card wear
@@ -29,3 +29,4 @@ services:
       - LIBVA_DRIVER_NAME=iHD
       - XDG_RUNTIME_DIR=/tmp
       - FRIGATE_RTSP_PASSWORD=meinPasswort
+
