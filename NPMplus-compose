@@ -1,0 +1,26 @@
+version: "3.8"
+services:
+  npmplus:
+    image: ghcr.io/zoeyvid/npmplus:latest
+    container_name: npmplus
+    restart: always
+    #network_mode: host
+    ports:
+      - "80:80"       # HTTP
+      - "81:81"       # Admin Web-UI
+      - "443:443"     # HTTPS
+    volumes:
+      - /config/npmplus/data:/data
+      - /config/npmplus/letsencrypt:/etc/letsencrypt
+      - /var/www:/var/www
+      - shm-volume:/tmp/cache:rw   # tmpfs für Cache/Logs
+    environment:
+      - TZ=Europe/Berlin
+      - ACME_EMAIL=email@gmail.com
+
+volumes:
+  shm-volume:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
