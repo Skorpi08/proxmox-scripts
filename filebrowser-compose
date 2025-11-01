@@ -16,4 +16,4 @@ services:
       # Optionale Umgebungsvariablen
       #- FB_BASEURL=/
       #- FB_LOG=stdout
-      #- FB_NOAUTH=true
+      - FB_NOAUTH=true
