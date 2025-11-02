@@ -10,6 +10,8 @@ services:
       - "81:81"       # Admin Web-UI
       - "443:443"     # HTTPS
     volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
       - /config/npmplus/data:/data
       - /config/npmplus/letsencrypt:/etc/letsencrypt
       - /var/www:/var/www
