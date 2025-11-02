@@ -17,5 +17,7 @@ services:
       - DNS_SERVER_FORWARDERS=1.1.1.1,8.8.8.8
     volumes:
       - /config/dns-server:/etc/dns
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
     sysctls:
       - net.ipv4.ip_local_port_range=1024 65000
