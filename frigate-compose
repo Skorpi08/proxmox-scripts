@@ -11,6 +11,7 @@ services:
       - /dev/dri/renderD129
       - /dev/bus/usb/001/003
     volumes:
+      - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
       - /config/frigate:/config            # deine Frigate-Konfiguration
       - /mnt/unraid/media:/media              # Aufnahmen / Clips
@@ -29,4 +30,5 @@ services:
       - LIBVA_DRIVER_NAME=iHD
       - XDG_RUNTIME_DIR=/tmp
       - FRIGATE_RTSP_PASSWORD=meinPasswort
+
 
