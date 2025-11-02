@@ -15,9 +15,10 @@ services:
       - 8096:8096
       - 8920:8920
     volumes:
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
       - /config/emby:/config     # Konfigurationsdatenbank
       - /cache/emby:/cache       # Vorschaubilder, Transcoding Cache
-      - /mnt/unraid/Bilder:/Bilder        # deine Medien (Filme, Serien, Musik)
-      - /mnt/unraid/Musik:/Musik        # deine Medien (Filme, Serien, Musik)
-
-      - /mnt/unraid/Videos:/Videos        # deine Medien (Filme, Serien, Musik)
+      - /mnt/hdd/Bilder:/Bilder        # deine Medien (Filme, Serien, Musik)
+      - /mnt/hdd/Musik:/Musik        # deine Medien (Filme, Serien, Musik)
+      - /mnt/hdd/Videos:/Videos        # deine Medien (Filme, Serien, Musik)
