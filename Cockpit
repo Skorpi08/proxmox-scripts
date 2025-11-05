@@ -98,9 +98,6 @@ pct exec $CTID -- bash -c "adduser --gecos '' --disabled-password $ADMIN_USER"
 pct exec $CTID -- bash -c "echo '$ADMIN_USER:$ADMIN_PASS' | chpasswd"
 pct exec $CTID -- usermod -aG sudo $ADMIN_USER
 
-
-#pct exec $CTID -- systemctl enable --now smbd
-
 # ------------------------
 # Cockpit Socket prüfen
 # ------------------------
