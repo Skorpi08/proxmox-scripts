@@ -1,0 +1,124 @@
+#!/bin/bash
+# =====================================================
+# LXC-Erstellung: Dockge + Docker
+# Debian 13, Unprivileged, nesting, fuse, keyctl, statische IP
+# Coral USB + iGPU
+# =====================================================
+set -e
+
+# ------------------------
+# Variablen
+# ------------------------
+HOSTNAME=dockge
+TEMPLATE="local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst"
+STORAGE="vm"
+DISK_SIZE="16"
+MEMORY=4096
+CORES=2
+GATEWAY="192.168.178.1"
+NETMASK="24"
+ROOT_PASS="11111"
+CTID_START=150
+CTID_END=200
+CORAL_IDS=("1a6e:089a" "18d1:9302") # Coral USB Vendor/Product IDs (verschiedene Varianten)
+# ------------------------
+# Nächste freie CTID ermitteln (150-200)
+# ------------------------
+for i in $(seq $CTID_START $CTID_END); do
+  if ! pvesh get /cluster/resources --type vm | grep -qE "(qemu|lxc)/$i"; then
+    CTID=$i
+    break
+  fi
+done
+
+if [ -z "$CTID" ]; then
+  echo "Fehler: Keine freie CTID gefunden!"
+  exit 1
+fi
+
+IP="192.168.178.$CTID"
+echo "==> Nächste freie CTID: $CTID"
+echo "==> Statische IP: $IP"
+
+# ------------------------
+# LXC erstellen
+# ------------------------
+pct create $CTID $TEMPLATE \
+  --hostname $HOSTNAME \
+  --cores $CORES \
+  --memory $MEMORY \
+  --swap 0 \
+  --rootfs $STORAGE:$DISK_SIZE \
+  --net0 name=eth0,bridge=vmbr0,firewall=1,ip=$IP/$NETMASK,gw=$GATEWAY,type=veth \
+  --unprivileged 1 \
+  --features nesting=1
+#
+# ------------------------
+# Coral USB Device + iGPU automatisch finden und einfügen
+# ------------------------
+cat <<'EOF' >> /etc/pve/lxc/$CTID.conf
+# Intel iGPU
+dev0: /dev/dri/renderD128
+mp0: /mnt/hdd/Bilder,mp=/mnt/hdd/Bilder
+mp1: /mnt/hdd/Musik,mp=/mnt/hdd/Musik
+mp2: /mnt/hdd/Videos,mp=/mnt/hdd/Videos
+mp3: /mnt/hdd/media,mp=/mnt/hdd/media
+lxc.apparmor.profile: unconfined
+lxc.cap.drop:
+lxc.cgroup2.devices.allow: a
+lxc.mount.auto: proc:rw sys:rw
+EOF
+
+DEVICE_PATH=""
+for ID in "${CORAL_IDS[@]}"; do
+    DEVICE_PATH=$(lsusb -d $ID | awk '{print "/dev/bus/usb/" $2 "/" $4}' | sed 's/://')
+    if [ -n "$DEVICE_PATH" ]; then
+        break
+    fi
+done
+
+if [ -n "$DEVICE_PATH" ]; then
+    echo "dev1: $DEVICE_PATH" >> /etc/pve/lxc/$CTID.conf
+else
+    echo "Coral USB nicht gefunden! Bitte prüfen."
+fi
+
+# ------------------------
+# LXC starten und Root-Passwort setzen
+# ------------------------
+pct start $CTID
+pct exec $CTID -- bash -c "echo 'root:$ROOT_PASS' | chpasswd"
+
+# ------------------------
+# Grundsystem vorbereiten
+# ------------------------
+pct exec $CTID -- apt update -y && apt upgrade -y
+pct exec $CTID -- apt install -y wget curl gnupg2 lsb-release sudo
+
+# ------------------------
+# Docker installieren
+# ------------------------
+pct exec $CTID -- bash -c "curl -fsSL https://get.docker.com -o get-docker.sh"
+pct exec $CTID -- bash -c "sh get-docker.sh"
+pct exec $CTID -- systemctl enable --now docker
+pct exec $CTID -- usermod -aG docker $USER  # Optional: Benutzer zur Docker-Gruppe hinzufügen
+
+
+# ------------------------
+# Dockge
+# ------------------------
+pct exec $CTID -- bash -c "docker volume create dockge_data"
+pct exec $CTID -- bash -c "docker run -d \
+  --name dockge \
+  --restart=always \
+  -p 5001:5001 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v dockge_data:/app/data \
+  louislam/dockge:latest"
+
+echo "-----------------------------------------------------"
+echo "Coral USB Device $DEVICE_PATH in /etc/pve/lxc/$CTID.conf eingetragen"
+echo "Root-Passwort: $ROOT_PASS"
+echo "Portainer: https://$IP:5001"
+echo "-----------------------------------------------------"
+
