@@ -58,8 +58,8 @@ pct create $CTID $TEMPLATE \
 
 
 # ZFS-Pool als Mount einhängen
-pct set $CTID -mp0 $ZPOOL_PATH,mp=$ZPOOL_MOUNT
-
+#pct set $CTID -mp0 $ZPOOL_PATH,mp=$ZPOOL_MOUNT
+pct set $CTID -lxc.mount.entry: $ZPOOL_PATH $ZPOOL_MOUNT none rbind 0 0
 # ------------------------
 # Container starten
 # ------------------------
