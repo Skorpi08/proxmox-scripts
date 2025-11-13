@@ -1,0 +1,133 @@
+#!/bin/bash
+# =====================================================
+# LXC-Erstellung: Samba
+# Debian 13, Privileged, nesting statische IP
+# Host-ZFS als Bind-Mount
+# =====================================================
+set -e
+
+# ------------------------
+# Variablen
+# ------------------------
+HOSTNAME=smb
+TEMPLATE="backup:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst"
+STORAGE="vm"
+DISK_SIZE="1"
+MEMORY=512 #8192 #16384 #24576
+CORES=1
+ZPOOL_PATH="/mnt/hdd"
+ZPOOL_MOUNT="mnt/hdd"
+GATEWAY="192.168.178.1"
+NETMASK="24"
+ROOT_PASS="11111"
+ADMIN_USER="admin"
+ADMIN_PASS="11111"
+SMB_USER="peter"
+SMB_PASS="11111"
+
+# ------------------------
+# Nächste freie CTID ermitteln (150-200)
+# ------------------------
+for i in $(seq 150 200); do
+  if ! pvesh get /cluster/resources --type vm | grep -qE "(qemu|lxc)/$i"; then
+    CTID=$i
+    break
+  fi
+done
+
+if [ -z "$CTID" ]; then
+  echo "Fehler: Keine freie CTID gefunden!"
+  exit 1
+fi
+
+IP="192.168.178.$CTID"
+echo "==> Nächste freie CTID: $CTID"
+echo "==> Statische IP: $IP"
+
+# ------------------------
+# LXC erstellen
+# ------------------------
+pct create $CTID $TEMPLATE \
+  --hostname $HOSTNAME \
+  --cores $CORES \
+  --memory $MEMORY \
+  --swap 0 \
+  --rootfs $STORAGE:$DISK_SIZE \
+  --net0 name=eth0,bridge=vmbr0,firewall=1,ip=$IP/$NETMASK,gw=$GATEWAY,type=veth \
+  --unprivileged 0 \
+  --features nesting=1
+
+echo "lxc.mount.entry: $ZPOOL_PATH $ZPOOL_MOUNT none rbind,create=dir 0 0" >> /etc/pve/lxc/${CTID}.conf
+
+# ------------------------
+# Container starten
+# ------------------------
+pct start $CTID
+
+# ------------------------
+# Root-Passwort setzen
+# ------------------------
+pct exec $CTID -- bash -c "echo 'root:$ROOT_PASS' | chpasswd"
+
+# ------------------------
+# Grundsystem vorbereiten
+# ------------------------
+
+pct exec $CTID -- apt clean
+pct exec $CTID -- rm -rf /var/lib/apt/lists/*
+pct exec $CTID -- bash -c "apt update -y && apt upgrade -y"
+pct exec $CTID -- apt install -y samba wsdd2
+
+pct exec $CTID -- bash -c "mv /etc/samba/smb.conf /etc/samba/smb.conf.bak"
+pct exec $CTID -- bash -c "cat > /etc/samba/smb.conf <<'EOF'
+[global]
+   workgroup = WORKGROUP
+   netbios name = smb
+   security = user
+   map to guest = bad user
+[hdd]
+   path = /mnt/hdd
+   public = no
+   guest ok = no
+   valid users = admin
+   read only = no
+   browseable = yes
+   inherit permissions = no
+[Bilder]
+   path = /mnt/hdd/Bilder
+   public = no
+   guest ok = no
+   valid users = peter
+   read only = no
+   browsable = yes
+   writable = yes
+   available = yes
+   create mask = 0770
+   directory mask = 0770
+EOF"
+
+# ------------------------
+# Admin-User mit sudo anlegen
+# ------------------------
+pct exec $CTID -- bash -c "adduser --gecos '' --disabled-password $ADMIN_USER"
+pct exec $CTID -- bash -c "echo '$ADMIN_USER:$ADMIN_PASS' | chpasswd"
+pct exec $CTID -- usermod -aG sudo $ADMIN_USER
+pct exec $CTID -- bash -c "(echo '$ADMIN_PASS'; echo '$ADMIN_PASS') | smbpasswd -s -a $ADMIN_USER"
+
+# Samba-User anlegen
+pct exec $CTID -- bash -c "adduser --gecos '' --disabled-password $SMB_USER"
+pct exec $CTID -- bash -c "echo '$SMB_USER:$SMB_PASS' | chpasswd"
+pct exec $CTID -- bash -c "(echo '$SMB_PASS'; echo '$SMB_PASS') | smbpasswd -s -a $SMB_USER"
+
+
+# Dienste aktivieren und starten
+pct exec $CTID -- systemctl enable smbd nmbd
+pct exec $CTID -- systemctl restart smbd nmbd
+
+# ------------------------
+# Fertig
+# ------------------------
+echo "-----------------------------------------------------"
+echo "Container $CTID erstellt und gestartet mit IP: $IP"
+echo "Samba-Share: \\\\$IP\\"
+echo "-----------------------------------------------------"
