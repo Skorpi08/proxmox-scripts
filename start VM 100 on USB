@@ -1,0 +1,2 @@
+echo 'ACTION=="add", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", RUN+="/bin/bash -c \"qm start 100\""' | sudo tee /etc/udev/rules.d/99-usb-vm-start.rules > /dev/null
+sudo udevadm control --reload-rules
